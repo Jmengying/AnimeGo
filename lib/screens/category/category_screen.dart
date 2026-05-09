@@ -14,7 +14,6 @@ class CategoryScreen extends ConsumerStatefulWidget {
 }
 
 class _CategoryScreenState extends ConsumerState<CategoryScreen> {
-  static const List<String> _areas = ['全部', '日本', '国产', '欧美'];
   static const List<String> _years = [
     '全部', '2026', '2025', '2024', '2023', '2022', '2021', '2020',
     '2019', '2018', '2017', '2016', '2015',
@@ -31,6 +30,7 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   Widget build(BuildContext context) {
     final activeSite = ref.watch(activeSiteProvider);
     final typeListAsync = ref.watch(typeListProvider);
+    final areaListAsync = ref.watch(areaListProvider);
 
     final area = _selectedArea == '全部' ? '' : _selectedArea;
     final year = _selectedYear == '全部' ? '' : _selectedYear;
@@ -89,8 +89,26 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                     error: (_, __) => const SizedBox.shrink(),
                   ),
                   const SizedBox(height: 12),
-                  _buildFilterRow('国家', _areas, _selectedArea,
-                      (v) => setState(() { _selectedArea = v; _currentPage = 1; _lastPageEmpty = false; })),
+                  // 地区筛选（从API动态获取）
+                  areaListAsync.when(
+                    data: (areas) {
+                      if (areas.isEmpty) return const SizedBox.shrink();
+                      final allAreas = ['全部', ...areas.map((a) => a.name)];
+                      return _buildFilterRow('地区', allAreas, _selectedArea,
+                          (v) => setState(() { _selectedArea = v; _currentPage = 1; _lastPageEmpty = false; }));
+                    },
+                    loading: () => const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                          SizedBox(width: 8),
+                          Text('加载地区...', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                        ],
+                      ),
+                    ),
+                    error: (_, __) => const SizedBox.shrink(),
+                  ),
                   const SizedBox(height: 12),
                   _buildFilterRow('年份', _years, _selectedYear,
                       (v) => setState(() { _selectedYear = v; _currentPage = 1; _lastPageEmpty = false; })),

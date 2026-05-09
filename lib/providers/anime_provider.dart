@@ -17,6 +17,13 @@ final typeListProvider = FutureProvider<List<MaccmsType>>((ref) {
   return ref.read(animeApiServiceProvider).getTypeList(baseUrl);
 });
 
+/// maccms地区列表（从当前源的API动态获取）
+final areaListProvider = FutureProvider<List<MaccmsArea>>((ref) {
+  final baseUrl = _getBaseUrl(ref);
+  if (baseUrl.isEmpty) return Future.value([]);
+  return ref.read(animeApiServiceProvider).getAreaList(baseUrl);
+});
+
 final recommendAnimeProvider = FutureProvider<List<Anime>>((ref) {
   final baseUrl = _getBaseUrl(ref);
   if (baseUrl.isEmpty) return Future.value([]);

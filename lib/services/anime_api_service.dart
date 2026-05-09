@@ -8,15 +8,24 @@ class MaccmsType {
   MaccmsType({required this.id, required this.name});
 }
 
+class MaccmsArea {
+  final String name;
+  MaccmsArea({required this.name});
+}
+
 class AnimeApiService {
   static const _timeout = Duration(seconds: 15);
   static const _headers = {'User-Agent': 'Mozilla/5.0'};
 
-  // 缓存每个baseUrl对应的类型列表
+  // 缓存每个baseUrl对应的类型列表和地区列表
   final Map<String, List<MaccmsType>> _typeCache = {};
+  final Map<String, List<MaccmsArea>> _areaCache = {};
 
-  /// 清除类型缓存（切换源时调用）
-  void clearTypeCache() => _typeCache.clear();
+  /// 清除缓存（切换源时调用）
+  void clearTypeCache() {
+    _typeCache.clear();
+    _areaCache.clear();
+  }
 
   /// 获取maccms分类列表：从实际数据中提取type_id和type_name
   Future<List<MaccmsType>> getTypeList(String baseUrl) async {
@@ -45,6 +54,35 @@ class AnimeApiService {
       final result = types.values.toList()..sort((a, b) => a.id.compareTo(b.id));
       if (result.isNotEmpty) {
         _typeCache[baseUrl] = result;
+      }
+      return result;
+    } catch (_) {}
+    return [];
+  }
+
+  /// 获取maccms地区列表：从实际数据中提取vod_area
+  Future<List<MaccmsArea>> getAreaList(String baseUrl) async {
+    if (_areaCache.containsKey(baseUrl)) return _areaCache[baseUrl]!;
+    try {
+      final areas = <String>{};
+      for (int pg = 1; pg <= 3; pg++) {
+        final params = {'ac': 'detail', 'pg': pg.toString()};
+        final uri = Uri.parse(baseUrl).replace(queryParameters: params);
+        final response = await http.get(uri, headers: _headers).timeout(_timeout);
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          if (data['code'] == 1) {
+            final list = data['list'] as List? ?? [];
+            for (final item in list) {
+              final area = item['vod_area']?.toString() ?? '';
+              if (area.isNotEmpty) areas.add(area);
+            }
+          }
+        }
+      }
+      final result = areas.map((a) => MaccmsArea(name: a)).toList()..sort((a, b) => a.name.compareTo(b.name));
+      if (result.isNotEmpty) {
+        _areaCache[baseUrl] = result;
       }
       return result;
     } catch (_) {}
