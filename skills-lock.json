@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "github-triage": {
+      "source": "C:\\Users\\yjx18\\AppData\\Local\\Temp\\oh-my-openagent",
+      "sourceType": "local",
+      "computedHash": "6f18365e26177a7fefeef4b925fc0e3df616833469f007ca38911bcbdd7cb79b"
+    },
+    "hyperplan": {
+      "source": "C:\\Users\\yjx18\\AppData\\Local\\Temp\\oh-my-openagent",
+      "sourceType": "local",
+      "computedHash": "100429313bfb003a84d84ad9e880e028c8711e41a16d4a0a0767713f2e1f2c37"
+    },
+    "pre-publish-review": {
+      "source": "C:\\Users\\yjx18\\AppData\\Local\\Temp\\oh-my-openagent",
+      "sourceType": "local",
+      "computedHash": "48a011df7214e83df612b4c2bbc5051be0db01f57f725c111c62db5dc5f7eedb"
+    },
+    "work-with-pr": {
+      "source": "C:\\Users\\yjx18\\AppData\\Local\\Temp\\oh-my-openagent",
+      "sourceType": "local",
+      "computedHash": "ab52516e3f544384d55cfdcfa01ae3f221d8efb20f974619722c5d205f0f08a7"
+    }
+  }
+}
