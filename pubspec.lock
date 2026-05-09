@@ -686,13 +686,13 @@ packages:
     source: hosted
     version: "14.3.0"
   volume_controller:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: volume_controller
-      sha256: ce25d4e02dd6f0b6d5d02dc1daa8de11b2d42d0f5afab8b1eda6aa0ebab3937a
+      sha256: "30863a51338db47fe16f92902b1a6c4ee5e15c9287b46573d7c2eb6be1f197d2"
       url: "https://pub.flutter-io.cn"
     source: hosted
-    version: "3.4.4"
+    version: "3.3.1"
   wakelock_plus:
     dependency: transitive
     description:
