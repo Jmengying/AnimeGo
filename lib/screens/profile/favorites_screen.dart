@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/theme.dart';
 import '../../models/anime.dart';
+import '../../app.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/history_provider.dart';
 import '../../utils/responsive.dart';
@@ -15,34 +16,32 @@ class FavoritesScreen extends ConsumerStatefulWidget {
   ConsumerState<FavoritesScreen> createState() => _FavoritesScreenState();
 }
 
-class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
-  List<Map<String, dynamic>> _favorites = [];
-  bool _isLoading = true;
+class _FavoritesScreenState extends ConsumerState<FavoritesScreen> with RouteAware {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
 
   @override
-  void initState() {
-    super.initState();
-    _loadFavorites();
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
   }
 
-  Future<void> _loadFavorites() async {
-    final user = ref.read(currentUserProvider);
-    if (user == null) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-    final email = user['email'] ?? '';
-    final favs = await ref.read(storageServiceProvider).getFavorites(email);
-    if (mounted) setState(() { _favorites = favs; _isLoading = false; });
+  @override
+  void didPopNext() {
+    // Refresh when coming back from another screen
+    ref.invalidate(favoritesProvider);
   }
 
-  Future<void> _removeFavorite(int index) async {
-    final user = ref.read(currentUserProvider);
-    if (user == null) return;
-    final email = user['email'] ?? '';
-    await ref.read(storageServiceProvider).toggleFavorite(email, _favorites[index]);
+  Future<void> _removeFavorite(Map<String, dynamic> fav) async {
+    await ref.read(storageServiceProvider).toggleFavorite(
+      ref.read(currentUserProvider)?['email'] ?? '',
+      fav,
+    );
+    ref.invalidate(favoritesProvider);
     if (mounted) {
-      setState(() => _favorites.removeAt(index));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('已取消收藏'), duration: Duration(seconds: 1)),
       );
@@ -51,41 +50,61 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final favsAsync = ref.watch(favoritesProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('我的收藏')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryColor))
-          : _favorites.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.favorite_border, size: 64, color: AppTheme.textSecondary),
-                      SizedBox(height: 16),
-                      Text('还没有收藏的动漫', style: TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
-                    ],
-                  ),
-                )
-              : GridView.builder(
-                  padding: const EdgeInsets.all(16),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: getCrossAxisCount(context),
-                    childAspectRatio: 0.55,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemCount: _favorites.length,
-                  itemBuilder: (context, index) {
-                    final anime = Anime.fromJson(_favorites[index]);
-                    return _FavoriteAnimeCard(
-                      anime: anime,
-                      onRemove: () => _removeFavorite(index),
-                    );
-                  },
-                ),
+      body: favsAsync.when(
+        data: (favorites) {
+          if (favorites.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.favorite_border, size: 64, color: AppTheme.textSecondary),
+                  SizedBox(height: 16),
+                  Text('还没有收藏的动漫', style: TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
+                ],
+              ),
+            );
+          }
+          return GridView.builder(
+            padding: const EdgeInsets.all(16),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: getCrossAxisCount(context),
+              childAspectRatio: 0.55,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            itemCount: favorites.length,
+            itemBuilder: (context, index) {
+              final anime = Anime.fromJson(favorites[index]);
+              return _FavoriteAnimeCard(
+                anime: anime,
+                onRemove: () => _removeFavorite(favorites[index]),
+              );
+            },
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator(color: AppTheme.primaryColor)),
+        error: (e, _) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: AppTheme.accentColor),
+              const SizedBox(height: 12),
+              Text('加载失败', style: const TextStyle(color: AppTheme.textSecondary)),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => ref.invalidate(favoritesProvider),
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
-
 }
 
 class _FavoriteAnimeCard extends StatelessWidget {

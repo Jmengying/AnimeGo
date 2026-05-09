@@ -22,6 +22,7 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   int _selectedTypeId = 0;
   String _selectedArea = '全部';
   String _selectedYear = '全部';
+  String _selectedGenre = '全部';
   int _currentPage = 1;
   bool _expanded = true;
   bool _lastPageEmpty = false;
@@ -31,10 +32,12 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
     final activeSite = ref.watch(activeSiteProvider);
     final typeListAsync = ref.watch(typeListProvider);
     final areaListAsync = ref.watch(areaListProvider);
+    final genreListAsync = ref.watch(genreListProvider);
 
     final area = _selectedArea == '全部' ? '' : _selectedArea;
     final year = _selectedYear == '全部' ? '' : _selectedYear;
-    final categoryKey = '$_selectedTypeId|$area|$year|$_currentPage';
+    final genre = _selectedGenre == '全部' ? '' : _selectedGenre;
+    final categoryKey = '$_selectedTypeId|$area|$year|$genre|$_currentPage';
     final animeListAsync = ref.watch(categoryAnimeProvider(categoryKey));
 
     return CustomScrollView(
@@ -112,6 +115,27 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                   const SizedBox(height: 12),
                   _buildFilterRow('年份', _years, _selectedYear,
                       (v) => setState(() { _selectedYear = v; _currentPage = 1; _lastPageEmpty = false; })),
+                  const SizedBox(height: 12),
+                  // 标签筛选（从API动态获取）
+                  genreListAsync.when(
+                    data: (genres) {
+                      if (genres.isEmpty) return const SizedBox.shrink();
+                      final allGenres = ['全部', ...genres.map((g) => g.name)];
+                      return _buildFilterRow('标签', allGenres, _selectedGenre,
+                          (v) => setState(() { _selectedGenre = v; _currentPage = 1; _lastPageEmpty = false; }));
+                    },
+                    loading: () => const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                          SizedBox(width: 8),
+                          Text('加载标签...', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                        ],
+                      ),
+                    ),
+                    error: (_, __) => const SizedBox.shrink(),
+                  ),
                   const SizedBox(height: 8),
                 ],
               ),
@@ -128,12 +152,13 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                     style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                   ),
                   const Spacer(),
-                  if (_selectedTypeId != 0 || _selectedArea != '全部' || _selectedYear != '全部')
+                  if (_selectedTypeId != 0 || _selectedArea != '全部' || _selectedYear != '全部' || _selectedGenre != '全部')
                     GestureDetector(
                       onTap: () => setState(() {
                         _selectedTypeId = 0;
                         _selectedArea = '全部';
                         _selectedYear = '全部';
+                        _selectedGenre = '全部';
                         _currentPage = 1;
                         _lastPageEmpty = false;
                       }),
@@ -363,6 +388,7 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
     }
     if (_selectedArea != '全部') parts.add(_selectedArea);
     if (_selectedYear != '全部') parts.add(_selectedYear);
+    if (_selectedGenre != '全部') parts.add(_selectedGenre);
     if (parts.isEmpty) return '全部动漫';
     return parts.join(' · ');
   }

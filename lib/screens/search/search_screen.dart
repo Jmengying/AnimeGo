@@ -18,6 +18,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _searchController = TextEditingController();
   String _keyword = '';
   int _currentPage = 1;
+  bool _lastPageEmpty = false;
   List<String> _searchHistory = [];
 
   @override
@@ -43,7 +44,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   void _search(String keyword) {
     if (keyword.trim().isEmpty) return;
-    setState(() { _keyword = keyword.trim(); _currentPage = 1; });
+    setState(() { _keyword = keyword.trim(); _currentPage = 1; _lastPageEmpty = false; });
     _saveHistory(keyword.trim());
   }
 
@@ -178,12 +179,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           child: resultsAsync.when(
             data: (animes) {
               if (animes.isEmpty) {
-                if (_currentPage > 1) {
+                if (_currentPage > 1 && !_lastPageEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) setState(() => _currentPage--);
+                    if (mounted) setState(() => _lastPageEmpty = true);
                   });
                 }
+                if (_currentPage == 1) {
+                  return const Center(child: Text('没有找到相关动漫', style: TextStyle(color: AppTheme.textSecondary)));
+                }
                 return const Center(child: Text('没有更多结果', style: TextStyle(color: AppTheme.textSecondary)));
+              } else {
+                if (_lastPageEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) setState(() => _lastPageEmpty = false);
+                  });
+                }
               }
               return GridView.builder(
                 padding: const EdgeInsets.all(16),
@@ -230,7 +240,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 child: Text('第 $_currentPage 页', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
               ),
               IconButton(
-                onPressed: () => setState(() => _currentPage++),
+                onPressed: _lastPageEmpty ? null : () => setState(() => _currentPage++),
                 icon: const Icon(Icons.chevron_right),
                 color: AppTheme.textPrimary,
               ),

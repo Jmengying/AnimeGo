@@ -98,11 +98,14 @@ class SourceService {
   /// 完整导入：默认maccms源 + TVBox订阅
   Future<void> importAllBuiltins() async {
     // 1. 添加直接可用的maccms源
+    final ts = DateTime.now().millisecondsSinceEpoch;
     final defaultSites = defaultMaccmsSources
-        .map((s) => SourceSite(
-              id: 'maccms_${s['name']}_${DateTime.now().millisecondsSinceEpoch}',
-              name: s['name']!,
-              apiUrl: s['url']!,
+        .asMap()
+        .entries
+        .map((e) => SourceSite(
+              id: 'maccms_${e.value['name']}_${ts}_${e.key}',
+              name: e.value['name']!,
+              apiUrl: e.value['url']!,
               type: 1,
             ))
         .toList();
@@ -149,14 +152,7 @@ class SourceService {
       }
     }
 
-    // 3. 合并：默认源 + TVBox订阅（去重已有的）
-    _subscriptions = [defaultSub];
-    for (final sub in tvboxSubs) {
-      if (!_subscriptions.any((s) => s.url == sub.url)) {
-        _subscriptions.add(sub);
-      }
-    }
-
+    // 3. Final save (loop already built the correct list incrementally)
     _autoSelectIfEmpty();
     await _save();
     await _saveIds();
@@ -233,6 +229,7 @@ class SourceService {
     }
 
     // Step 2: 遍历每个仓库
+    int whCounter = 0;
     for (final item in urlList) {
       final whName = item['name']?.toString() ?? '未命名';
       final whUrl = item['url']?.toString() ?? '';
@@ -254,6 +251,7 @@ class SourceService {
 
         final sitesRaw = config['sites'] as List? ?? [];
         final List<SourceSite> sites = [];
+        int siteCounter = 0;
 
         for (final site in sitesRaw) {
           final siteType = site['type'] ?? 0;
@@ -268,7 +266,7 @@ class SourceService {
               : siteApi;
 
           sites.add(SourceSite(
-            id: 'site_${DateTime.now().millisecondsSinceEpoch}_${sites.length}',
+            id: 'site_${whCounter}_${siteCounter++}',
             name: siteName,
             apiUrl: apiUrl,
             type: siteType,
@@ -278,7 +276,7 @@ class SourceService {
 
         if (sites.isNotEmpty) {
           warehouses.add(SourceWarehouse(
-            id: 'wh_${DateTime.now().millisecondsSinceEpoch}_${warehouses.length}',
+            id: 'wh_${whCounter++}',
             name: whName,
             url: whUrl,
             sites: sites,
@@ -338,7 +336,9 @@ class SourceService {
       final response = await http.get(uri, headers: {
         'User-Agent': 'Mozilla/5.0',
       }).timeout(const Duration(seconds: 5));
-      return response.statusCode == 200 && response.body.contains('"code":1');
+      if (response.statusCode != 200) return false;
+      final data = json.decode(response.body);
+      return data is Map && data['code'] == 1;
     } catch (_) {
       return false;
     }

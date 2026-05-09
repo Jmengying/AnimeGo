@@ -204,6 +204,7 @@ class _AnimeDetailScreenState extends ConsumerState<AnimeDetailScreen> {
                   ),
                 );
               }
+              if (_selectedSourceIndex >= sources.length) _selectedSourceIndex = 0;
               final currentSource = sources[_selectedSourceIndex];
               final episodes = currentSource.episodes;
               return SliverToBoxAdapter(

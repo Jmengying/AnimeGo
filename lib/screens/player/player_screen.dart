@@ -63,8 +63,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // Auto-save progress periodically
   Timer? _autoSaveTimer;
 
+  // Stream subscriptions (must be cancelled on dispose)
+  final List<StreamSubscription> _subscriptions = [];
+
   // Episode
   late int _currentEpisodeIndex;
+  late String _currentEpTitle;
+  late String _currentEpUrl;
 
   // Animation
   late AnimationController _animCtrl;
@@ -93,10 +98,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       (e) => e.url == widget.episode.url && e.title == widget.episode.title,
     );
     if (_currentEpisodeIndex < 0) _currentEpisodeIndex = 0;
+    final ep = episodes.isNotEmpty ? episodes[_currentEpisodeIndex] : widget.episode;
+    _currentEpTitle = ep.title;
+    _currentEpUrl = ep.url;
   }
 
   void _setupListeners() {
-    _player.stream.playing.listen((v) {
+    _subscriptions.add(_player.stream.playing.listen((v) {
       if (!mounted) return;
       setState(() => _isPlaying = v);
       if (v) {
@@ -109,27 +117,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _showControls = true;
         _animCtrl.forward();
       }
-    });
-    _player.stream.position.listen((v) {
+    }));
+    _subscriptions.add(_player.stream.position.listen((v) {
       if (mounted && !_isDragging) setState(() => _position = v);
-    });
-    _player.stream.duration.listen((v) {
+    }));
+    _subscriptions.add(_player.stream.duration.listen((v) {
       if (mounted) setState(() => _duration = v);
-    });
-    _player.stream.volume.listen((v) {});
-    _player.stream.completed.listen((v) {
+    }));
+    _subscriptions.add(_player.stream.completed.listen((v) {
       if (v && mounted) {
         setState(() => _isPlaying = false);
         _hideTimer?.cancel();
         _autoSaveTimer?.cancel();
-        _saveProgress(); // Save on completion
+        _saveProgress();
         _showControls = true;
         _animCtrl.forward();
       }
-    });
-    _player.stream.buffering.listen((v) {
+    }));
+    _subscriptions.add(_player.stream.buffering.listen((v) {
       if (mounted) setState(() => _isBuffering = v);
-    });
+    }));
   }
 
   String _getReferer() {
@@ -150,17 +157,40 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Future<void> _initPlayer() async {
     try {
-      final url = widget.episode.url;
-      if (url.isEmpty) {
+      if (_currentEpUrl.isEmpty) {
         if (mounted) setState(() { _error = '没有可播放的视频源'; _isLoading = false; });
         return;
       }
-      await _player.open(Media(url, httpHeaders: _videoHeaders()));
+      await _player.open(Media(_currentEpUrl, httpHeaders: _videoHeaders()));
       await _player.setVolume(100.0);
+      // Resume from saved position
+      final savedPos = await _getSavedPosition();
+      if (savedPos > 0 && mounted) {
+        await _player.seek(Duration(seconds: savedPos));
+      }
       if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       if (mounted) setState(() { _error = '播放失败: $e'; _isLoading = false; });
     }
+  }
+
+  Future<int> _getSavedPosition() async {
+    try {
+      final user = ref.read(currentUserProvider);
+      if (user == null) return 0;
+      final email = user['email'] ?? '';
+      if (email.isEmpty) return 0;
+      final history = await ref.read(storageServiceProvider).getWatchHistory(email);
+      final record = history.where((r) =>
+          r.animeId == widget.anime.id && r.episodeUrl == _currentEpUrl).firstOrNull;
+      if (record != null && record.progress > 0 && record.duration > 0) {
+        // Only resume if not near the end (within 30 seconds)
+        if (record.duration - record.progress > 30) {
+          return record.progress;
+        }
+      }
+    } catch (_) {}
+    return 0;
   }
 
   // Win32 cached bindings (lazy, Windows-only)
@@ -296,8 +326,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         animeId: widget.anime.id,
         animeTitle: widget.anime.title,
         animeCover: widget.anime.cover,
-        episodeTitle: widget.episode.title,
-        episodeUrl: widget.episode.url,
+        episodeTitle: _currentEpTitle,
+        episodeUrl: _currentEpUrl,
         progress: pos,
         duration: _duration.inSeconds,
         watchedAt: DateTime.now(),
@@ -310,6 +340,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   void dispose() {
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    _subscriptions.clear();
     _hideTimer?.cancel();
     _autoSaveTimer?.cancel();
     _gestureFeedbackTimer?.cancel();
@@ -333,7 +367,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _playEpisodeAt(int index) {
     final eps = widget.anime.episodes ?? [];
     if (index < 0 || index >= eps.length) return;
-    setState(() { _currentEpisodeIndex = index; _isLoading = true; _error = null; });
+    _saveProgress(); // Save before switching
+    setState(() {
+      _currentEpisodeIndex = index;
+      _currentEpTitle = eps[index].title;
+      _currentEpUrl = eps[index].url;
+      _isLoading = true;
+      _error = null;
+    });
     _player.open(Media(eps[index].url, httpHeaders: _videoHeaders()));
     _player.setVolume(_isMuted ? 0.0 : _volume);
   }
@@ -342,13 +383,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryColor, strokeWidth: 3))
-          : _error != null
-              ? _buildError()
-              : _buildPlayer(),
+    return PopScope(
+      canPop: !_isFullscreen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _isFullscreen) {
+          _toggleFullscreen();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryColor, strokeWidth: 3))
+            : _error != null
+                ? _buildError()
+                : _buildPlayer(),
+      ),
     );
   }
 
@@ -403,7 +452,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               onPanStart: (_) { _isDragging = true; _dragSeekDelta = 0; },
               onPanUpdate: (d) {
                 if (d.delta.dx.abs() > d.delta.dy.abs()) {
-                  _dragSeekDelta += d.delta.dx * 0.5;
+                  // Scale seek relative to screen width: full swipe = ~10% of duration
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final seekPerPx = _duration.inSeconds > 0
+                      ? (_duration.inSeconds * 0.1) / screenWidth
+                      : 0.15;
+                  _dragSeekDelta += d.delta.dx * seekPerPx;
                   setState(() => _showSeekFeedback = true);
                 }
               },

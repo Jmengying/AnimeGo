@@ -24,6 +24,13 @@ final areaListProvider = FutureProvider<List<MaccmsArea>>((ref) {
   return ref.read(animeApiServiceProvider).getAreaList(baseUrl);
 });
 
+/// maccms标签列表（从当前源的API动态获取）
+final genreListProvider = FutureProvider<List<MaccmsGenre>>((ref) {
+  final baseUrl = _getBaseUrl(ref);
+  if (baseUrl.isEmpty) return Future.value([]);
+  return ref.read(animeApiServiceProvider).getGenreList(baseUrl);
+});
+
 final recommendAnimeProvider = FutureProvider<List<Anime>>((ref) {
   final baseUrl = _getBaseUrl(ref);
   if (baseUrl.isEmpty) return Future.value([]);
@@ -42,7 +49,7 @@ final animeListByTagProvider = FutureProvider.family<List<Anime>, String>((ref, 
   return ref.read(animeApiServiceProvider).getAnimeListByTag(baseUrl, tag);
 });
 
-/// 分类筛选：key格式为 "typeId|area|year|page"
+/// 分类筛选：key格式为 "typeId|area|year|genre|page"
 final categoryAnimeProvider = FutureProvider.family<List<Anime>, String>((ref, key) {
   final baseUrl = _getBaseUrl(ref);
   if (baseUrl.isEmpty) return Future.value([]);
@@ -50,12 +57,14 @@ final categoryAnimeProvider = FutureProvider.family<List<Anime>, String>((ref, k
   final typeId = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;
   final area = parts.length > 1 ? parts[1] : '';
   final year = parts.length > 2 ? parts[2] : '';
-  final page = int.tryParse(parts.length > 3 ? parts[3] : '1') ?? 1;
+  final genre = parts.length > 3 ? parts[3] : '';
+  final page = int.tryParse(parts.length > 4 ? parts[4] : '1') ?? 1;
   return ref.read(animeApiServiceProvider).getAnimeByCategory(
     baseUrl,
     typeId: typeId,
     area: area,
     year: year,
+    genre: genre,
     page: page,
   );
 });

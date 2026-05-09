@@ -13,28 +13,36 @@ class MaccmsArea {
   MaccmsArea({required this.name});
 }
 
+class MaccmsGenre {
+  final String name;
+  MaccmsGenre({required this.name});
+}
+
 class AnimeApiService {
   static const _timeout = Duration(seconds: 15);
   static const _headers = {'User-Agent': 'Mozilla/5.0'};
 
-  // 缓存每个baseUrl对应的类型列表和地区列表
+  // 缓存每个baseUrl对应的类型列表、地区列表和标签列表
   final Map<String, List<MaccmsType>> _typeCache = {};
   final Map<String, List<MaccmsArea>> _areaCache = {};
+  final Map<String, List<MaccmsGenre>> _genreCache = {};
 
   /// 清除缓存（切换源时调用）
   void clearTypeCache() {
     _typeCache.clear();
     _areaCache.clear();
+    _genreCache.clear();
   }
 
-  /// 获取maccms分类列表：从实际数据中提取type_id和type_name
-  Future<List<MaccmsType>> getTypeList(String baseUrl) async {
-    if (_typeCache.containsKey(baseUrl)) return _typeCache[baseUrl]!;
+  /// 一次性获取所有筛选元数据（类型、地区、标签），共享API请求
+  Future<void> _fetchAllMetadata(String baseUrl) async {
+    if (_typeCache.containsKey(baseUrl)) return;
     try {
-      // 多抓几页来获取更多类型
       final types = <int, MaccmsType>{};
+      final areas = <String>{};
+      final genres = <String>{};
       for (int pg = 1; pg <= 3; pg++) {
-        final params = {'ac': 'detail', 'pg': pg.toString()};
+        final params = {'ac': 'list', 'pg': pg.toString()};
         final uri = Uri.parse(baseUrl).replace(queryParameters: params);
         final response = await http.get(uri, headers: _headers).timeout(_timeout);
         if (response.statusCode == 200) {
@@ -47,50 +55,45 @@ class AnimeApiService {
               if (tid > 0 && tname.isNotEmpty && !types.containsKey(tid)) {
                 types[tid] = MaccmsType(id: tid, name: tname);
               }
-            }
-          }
-        }
-      }
-      final result = types.values.toList()..sort((a, b) => a.id.compareTo(b.id));
-      if (result.isNotEmpty) {
-        _typeCache[baseUrl] = result;
-      }
-      return result;
-    } catch (_) {}
-    return [];
-  }
-
-  /// 获取maccms地区列表：从实际数据中提取vod_area
-  Future<List<MaccmsArea>> getAreaList(String baseUrl) async {
-    if (_areaCache.containsKey(baseUrl)) return _areaCache[baseUrl]!;
-    try {
-      final areas = <String>{};
-      for (int pg = 1; pg <= 3; pg++) {
-        final params = {'ac': 'detail', 'pg': pg.toString()};
-        final uri = Uri.parse(baseUrl).replace(queryParameters: params);
-        final response = await http.get(uri, headers: _headers).timeout(_timeout);
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          if (data['code'] == 1) {
-            final list = data['list'] as List? ?? [];
-            for (final item in list) {
               final area = item['vod_area']?.toString() ?? '';
               if (area.isNotEmpty) areas.add(area);
+              final cls = item['vod_class']?.toString() ?? '';
+              if (cls.isNotEmpty) {
+                for (final g in cls.split(RegExp(r'[,，]'))) {
+                  final trimmed = g.trim();
+                  if (trimmed.isNotEmpty) genres.add(trimmed);
+                }
+              }
             }
           }
         }
       }
-      final result = areas.map((a) => MaccmsArea(name: a)).toList()..sort((a, b) => a.name.compareTo(b.name));
-      if (result.isNotEmpty) {
-        _areaCache[baseUrl] = result;
-      }
-      return result;
+      final tResult = types.values.toList()..sort((a, b) => a.id.compareTo(b.id));
+      if (tResult.isNotEmpty) _typeCache[baseUrl] = tResult;
+      final aResult = areas.map((a) => MaccmsArea(name: a)).toList()..sort((a, b) => a.name.compareTo(b.name));
+      if (aResult.isNotEmpty) _areaCache[baseUrl] = aResult;
+      final gResult = genres.map((g) => MaccmsGenre(name: g)).toList()..sort((a, b) => a.name.compareTo(b.name));
+      if (gResult.isNotEmpty) _genreCache[baseUrl] = gResult;
     } catch (_) {}
-    return [];
+  }
+
+  Future<List<MaccmsType>> getTypeList(String baseUrl) async {
+    await _fetchAllMetadata(baseUrl);
+    return _typeCache[baseUrl] ?? [];
+  }
+
+  Future<List<MaccmsArea>> getAreaList(String baseUrl) async {
+    await _fetchAllMetadata(baseUrl);
+    return _areaCache[baseUrl] ?? [];
+  }
+
+  Future<List<MaccmsGenre>> getGenreList(String baseUrl) async {
+    await _fetchAllMetadata(baseUrl);
+    return _genreCache[baseUrl] ?? [];
   }
 
   Future<List<Anime>> _fetchAnime(String baseUrl,
-      {String? wd, int pg = 1, int typeId = 0, String? area, String? year}) async {
+      {String? wd, int pg = 1, int typeId = 0, String? area, String? year, String? genre}) async {
     try {
       final params = <String, String>{
         'ac': 'detail',
@@ -100,6 +103,9 @@ class AnimeApiService {
       if (typeId > 0) params['t'] = typeId.toString();
       if (area != null && area.isNotEmpty) params['area'] = area;
       if (year != null && year.isNotEmpty) params['year'] = year;
+      if (genre != null && genre.isNotEmpty) {
+        params['wd'] = wd != null && wd.isNotEmpty ? '$wd $genre' : genre;
+      }
 
       final uri = Uri.parse(baseUrl).replace(queryParameters: params);
       final response = await http.get(uri, headers: _headers).timeout(_timeout);
@@ -197,11 +203,13 @@ class AnimeApiService {
       {int typeId = 0,
       String area = '',
       String year = '',
+      String genre = '',
       int page = 1}) async {
     return _fetchAnime(baseUrl,
         typeId: typeId,
         area: area.isNotEmpty ? area : null,
         year: year.isNotEmpty ? year : null,
+        genre: genre.isNotEmpty ? genre : null,
         pg: page);
   }
 

@@ -3,23 +3,41 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/theme.dart';
 import '../../providers/anime_provider.dart';
+import '../../providers/history_provider.dart';
 import '../../providers/source_provider.dart';
 import '../../models/anime.dart';
 import '../../models/source_subscription.dart';
+import '../../models/watch_record.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/anime_card.dart';
 import '../detail/anime_detail_screen.dart';
+import '../player/player_screen.dart';
 
-class HomeTab extends ConsumerWidget {
+class HomeTab extends ConsumerStatefulWidget {
   const HomeTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends ConsumerState<HomeTab> {
+  @override
+  Widget build(BuildContext context) {
     final recommendAsync = ref.watch(recommendAnimeProvider);
     final latestAsync = ref.watch(latestAnimeProvider);
     final activeSite = ref.watch(activeSiteProvider);
+    final historyAsync = ref.watch(watchHistoryProvider);
 
-    return CustomScrollView(
+    return RefreshIndicator(
+      color: AppTheme.primaryColor,
+      onRefresh: () async {
+        ref.invalidate(recommendAnimeProvider);
+        ref.invalidate(latestAnimeProvider);
+        ref.invalidate(watchHistoryProvider);
+        // Wait for at least one provider to complete
+        await ref.read(recommendAnimeProvider.future);
+      },
+      child: CustomScrollView(
       slivers: [
         SliverAppBar(
           floating: true,
@@ -63,6 +81,9 @@ class HomeTab extends ConsumerWidget {
               error: (_, __) => const SizedBox(height: 200),
             ),
           ),
+        // Continue Watching section
+        if (activeSite != null)
+          ..._buildContinueWatching(context, historyAsync),
         // Latest section
         if (activeSite != null) ...[
           SliverToBoxAdapter(
@@ -128,6 +149,7 @@ class HomeTab extends ConsumerWidget {
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 20)),
       ],
+    ),
     );
   }
 
@@ -170,7 +192,7 @@ class HomeTab extends ConsumerWidget {
 
   void _showSourcePicker(
       BuildContext context, WidgetRef ref, List<SourceSubscription> subs) {
-    final activeWh = ref.watch(activeWarehouseProvider);
+    final activeWh = ref.read(activeWarehouseProvider);
 
     showModalBottomSheet(
       context: context,
@@ -404,6 +426,162 @@ class HomeTab extends ConsumerWidget {
       decoration: BoxDecoration(
         color: AppTheme.cardColor,
         borderRadius: BorderRadius.circular(16),
+      ),
+    );
+  }
+
+  List<Widget> _buildContinueWatching(BuildContext context, AsyncValue<List<WatchRecord>> historyAsync) {
+    final records = historyAsync.valueOrNull;
+    if (records == null || records.isEmpty) return [];
+
+    // Deduplicate by animeId, keep the most recent
+    final seen = <String>{};
+    final uniqueRecords = <WatchRecord>[];
+    for (final r in records) {
+      if (seen.add(r.animeId)) {
+        uniqueRecords.add(r);
+        if (uniqueRecords.length >= 10) break;
+      }
+    }
+
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: AppTheme.accentColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                '继续观看',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: SizedBox(
+          height: 140,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: uniqueRecords.length,
+            itemBuilder: (context, index) {
+              final record = uniqueRecords[index];
+              return _buildContinueWatchingCard(context, record);
+            },
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildContinueWatchingCard(BuildContext context, WatchRecord record) {
+    return GestureDetector(
+      onTap: () {
+        final anime = Anime(
+          id: record.animeId,
+          title: record.animeTitle,
+          cover: record.animeCover,
+        );
+        final episode = Episode(title: record.episodeTitle, url: record.episodeUrl);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => PlayerScreen(anime: anime, episode: episode)),
+        );
+      },
+      child: Container(
+        width: 200,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.cardColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            // Cover image
+            Positioned.fill(
+              child: CachedNetworkImage(
+                imageUrl: record.animeCover,
+                fit: BoxFit.cover,
+                placeholder: (_, __) => Container(color: AppTheme.cardColor),
+                errorWidget: (_, __, ___) => Container(
+                  color: AppTheme.cardColor,
+                  child: const Icon(Icons.broken_image, color: AppTheme.textSecondary, size: 32),
+                ),
+              ),
+            ),
+            // Gradient overlay
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
+                  ),
+                ),
+              ),
+            ),
+            // Play icon
+            const Positioned(
+              top: 28,
+              left: 0,
+              right: 0,
+              child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 36),
+            ),
+            // Info
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 10,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    record.animeTitle,
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '看到 ${record.episodeTitle}',
+                    style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (record.duration > 0) ...[
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: record.progressPercent.clamp(0.0, 1.0),
+                        backgroundColor: Colors.white24,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                        minHeight: 3,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -86,19 +86,16 @@ class EpisodeSource {
 class Episode {
   final String title;
   final String url;
-  final String? playUrl;
 
   Episode({
     required this.title,
     required this.url,
-    this.playUrl,
   });
 
   factory Episode.fromJson(Map<String, dynamic> json) {
     return Episode(
       title: json['title']?.toString() ?? '',
       url: json['url']?.toString() ?? '',
-      playUrl: json['playUrl']?.toString() ?? json['play_url']?.toString(),
     );
   }
 
@@ -106,7 +103,6 @@ class Episode {
     return {
       'title': title,
       'url': url,
-      if (playUrl != null) 'playUrl': playUrl,
     };
   }
 }

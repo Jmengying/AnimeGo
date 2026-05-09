@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 
 class LocalAuthService {
   static const String _usersKey = 'registered_users';
@@ -90,6 +92,31 @@ class LocalAuthService {
     if (users.containsKey(email)) {
       (users[email] as Map<String, dynamic>)['password'] = newPassword;
       await prefs.setString(_usersKey, json.encode(users));
+    }
+  }
+
+  Future<void> updateAvatar(String email, File imageFile) async {
+    // Save image to app documents directory
+    final appDir = await getApplicationDocumentsDirectory();
+    final avatarDir = Directory('${appDir.path}/avatars');
+    if (!await avatarDir.exists()) {
+      await avatarDir.create(recursive: true);
+    }
+    final ext = imageFile.path.split('.').last;
+    final savedFile = await imageFile.copy('${avatarDir.path}/$email.$ext');
+
+    // Update user map with avatar path
+    final prefs = await SharedPreferences.getInstance();
+    final usersStr = prefs.getString(_usersKey) ?? '{}';
+    final users = Map<String, dynamic>.from(json.decode(usersStr));
+
+    if (users.containsKey(email)) {
+      (users[email] as Map<String, dynamic>)['avatar'] = savedFile.path;
+      await prefs.setString(_usersKey, json.encode(users));
+      if (_currentUser != null && _currentUser!['email'] == email) {
+        _currentUser!['avatar'] = savedFile.path;
+        await prefs.setString(_currentUserKey, json.encode(_currentUser));
+      }
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../app.dart';
 import '../../config/theme.dart';
 import '../../providers/history_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -8,11 +9,33 @@ import '../../models/watch_record.dart';
 import '../../models/anime.dart';
 import '../detail/anime_detail_screen.dart';
 
-class HistoryScreen extends ConsumerWidget {
+class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends ConsumerState<HistoryScreen> with RouteAware {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    ref.invalidate(watchHistoryProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final historyAsync = ref.watch(watchHistoryProvider);
 
     return Scaffold(
@@ -21,7 +44,7 @@ class HistoryScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            onPressed: () => _showClearDialog(context, ref),
+            onPressed: () => _showClearDialog(context),
           ),
         ],
       ),
@@ -55,6 +78,11 @@ class HistoryScreen extends ConsumerWidget {
               const Icon(Icons.error_outline, size: 48, color: AppTheme.accentColor),
               const SizedBox(height: 12),
               Text('加载失败', style: const TextStyle(color: AppTheme.textSecondary)),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => ref.invalidate(watchHistoryProvider),
+                child: const Text('重试'),
+              ),
             ],
           ),
         ),
@@ -62,7 +90,7 @@ class HistoryScreen extends ConsumerWidget {
     );
   }
 
-  void _showClearDialog(BuildContext context, WidgetRef ref) {
+  void _showClearDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

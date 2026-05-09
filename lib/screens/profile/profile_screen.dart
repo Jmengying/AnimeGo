@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/history_provider.dart';
@@ -8,14 +10,59 @@ import 'favorites_screen.dart';
 import 'history_screen.dart';
 import 'source_manage_screen.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _isPickingAvatar = false;
+
+  Future<void> _pickAvatar() async {
+    if (_isPickingAvatar) return;
+    _isPickingAvatar = true;
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80,
+      );
+      if (picked == null) return;
+
+      final user = ref.read(currentUserProvider);
+      if (user == null) return;
+      final email = user['email'] ?? '';
+      if (email.isEmpty) return;
+
+      await ref.read(authServiceProvider).updateAvatar(email, File(picked.path));
+      ref.invalidate(currentUserProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('头像已更新'), duration: Duration(seconds: 1)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新头像失败: $e'), duration: const Duration(seconds: 2)),
+        );
+      }
+    } finally {
+      _isPickingAvatar = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
     final historyAsync = ref.watch(watchHistoryProvider);
     final favoritesAsync = ref.watch(favoritesProvider);
+
+    final avatarPath = user?['avatar'] as String?;
 
     return CustomScrollView(
       slivers: [
@@ -25,7 +72,7 @@ class ProfileScreen extends ConsumerWidget {
           actions: [
             IconButton(
               icon: const Icon(Icons.logout_rounded),
-              onPressed: () => _showLogoutDialog(context, ref),
+              onPressed: () => _showLogoutDialog(context),
             ),
           ],
         ),
@@ -35,16 +82,41 @@ class ProfileScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 36,
-                  backgroundColor: AppTheme.primaryColor,
-                  child: Text(
-                    (user?['username'] ?? 'U')[0].toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                GestureDetector(
+                  onTap: _pickAvatar,
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 36,
+                        backgroundColor: AppTheme.primaryColor,
+                        backgroundImage: (avatarPath != null && avatarPath.isNotEmpty)
+                            ? FileImage(File(avatarPath))
+                            : null,
+                        child: (avatarPath == null || avatarPath.isEmpty)
+                            ? Text(
+                                (user?['username'] ?? 'U')[0].toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : null,
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surfaceColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppTheme.cardColor, width: 1.5),
+                          ),
+                          child: const Icon(Icons.camera_alt, size: 14, color: AppTheme.textSecondary),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -184,7 +256,7 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  void _showLogoutDialog(BuildContext context, WidgetRef ref) {
+  void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -202,6 +274,8 @@ class ProfileScreen extends ConsumerWidget {
               ref.invalidate(currentUserProvider);
               if (ctx.mounted) {
                 Navigator.pop(ctx);
+              }
+              if (context.mounted) {
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const LoginScreen()),
                   (route) => false,
